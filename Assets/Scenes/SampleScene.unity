@@ -288,14 +288,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   displayTarget: {fileID: 1208257825}
-  size: 1024
-  particleDensity: 0.132
-  progressiveLoosening: 0
-  loosenFactor: 0.85
-  maxSteps: 10571
+  size: 512
+  particleDensity: 0.175
+  progressiveLoosening: 1
+  loosenFactor: 1
+  maxSteps: 4058
   heightScale: 10
-  seed: 12345
-  useRandomSeed: 1
+  seed: 987654
+  useRandomSeed: 0
 --- !u!23 &375286354
 MeshRenderer:
   m_ObjectHideFlags: 0
