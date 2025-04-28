@@ -39,6 +39,7 @@ public class DLAGenerator : MonoBehaviour
     float[,]   _heightMap;   // blurred DLA -> floats
     bool[,]    _dla;
     private int filledCount;
+    private float spawnRadius;
 
     void Start()
     {
@@ -147,88 +148,103 @@ bool HasNeighbor(bool[,] m, int x, int y)
     } 
     return false;
 }
-    
 
-bool[,] UpscaleDLA(bool[,] map, int hiSize)
+bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
     {
-        int oldSize = map.GetLength(0);
-        bool[,] dla = new bool[hiSize, hiSize];
+        int oldSize = oldMap.GetLength(0);
+        bool[,] upscaledMap = new bool[newSize, newSize];
 
+        // First pass translates existing points on the low-scale map
+        // to corresponding points on the size-doubled map, without connecting them
         for (int y = 0; y < oldSize; ++y)
         for (int x = 0; x < oldSize; ++x)
         {
-            if (!map[x, y])
+            if (!oldMap[x, y])
                 continue;
 
             int hx = 2 * x + 1;
             int hy = 2 * y + 1;
-            if (!dla[hx, hy])
+            if (!upscaledMap[hx, hy])
             {
-                dla[hx, hy] = true;
+                upscaledMap[hx, hy] = true;
                 filledCount++;
             }
 
         }
         
+        // Second pass checks whether a point in the old map had a connection to the
+        // right and the bottom, and if so, adds a corresponding point in the upscaled
+        // map
         for (int y = 0; y < oldSize; ++y)
         for (int x = 0; x < oldSize; ++x)
         {
-            if (!map[x, y])
+            if (!oldMap[x, y])
                 continue;
             
             int hx = 2 * x + 1;
             int hy = 2 * y + 1;
             
-            if (x + 1 < oldSize && map[x + 1, y]) {
-                dla[hx + 1, hy] = true;     // E
+            if (x + 1 < oldSize && oldMap[x + 1, y]) {
+                upscaledMap[hx + 1, hy] = true;     // E
                 filledCount++;
             }
 
-            if (y + 1 < oldSize && map[x, y + 1])
+            if (y + 1 < oldSize && oldMap[x, y + 1])
             {
-                dla[hx, hy + 1] = true; // S
+                upscaledMap[hx, hy + 1] = true; // S
                 filledCount++;
             }
         }
-
+        
+        // Third pass checks whether a right and bottom connection exists. If a right connection
+        // exists, then we do not add diagonal connections there. If it does not exist, then we
+        // check for diagonal connections in the old map and add them. Run two passes of this logic
+        // to prevent losing connections over time.
+        for (int passes = 0; passes < 2; passes++)
         for (int y = 0; y < oldSize; ++y)
         for (int x = 0; x < oldSize; ++x)
         {
             int hx = 2 * x + 1;
             int hy = 2 * y + 1;
 
-            if (!dla[hx, hy])
+            if (!upscaledMap[hx, hy])
                 continue;
 
-            if (x + 1 < oldSize && !dla[hx + 1, hy])
+            // A right connection does not exist
+            if (x + 1 < oldSize && !upscaledMap[hx + 1, hy])
             {
-                if (y + 1 < oldSize && map[x + 1, y + 1])
+                bool downRightExists = (y + 1 < oldSize) && (oldMap[x + 1, y + 1]);
+                bool upRightExists = (y - 1 >= 0) && (oldMap[x + 1, y - 1]);
+                
+                // both an upper right and lower right connection exist in the old map, then
+                // choose one of them. Otherwise, check for the case where only one of those diagonals
+                // previously existed.
+                if (upRightExists && downRightExists)
                 {
-                    dla[hx + 1, hy + 1] = true;
+                    
+                    if (Random.Range(0,2) == 0)
+                    {
+                        upscaledMap[hx + 1, hy + 1] = true;
+                        filledCount++;
+                    }
+                    else
+                    {
+                        upscaledMap[hx + 1, hy - 1] = true;
+                        filledCount++;
+                    }
+                } else if (downRightExists)
+                {
+                    upscaledMap[hx + 1, hy + 1] = true;
                     filledCount++;
                 }
-                else if (y - 1 >= 0 && map[x + 1, y - 1])
+                else if (upRightExists)
                 {
-                    dla[hx + 1, hy - 1] = true;
-                    filledCount++;
-                }
-            }
-
-            if (y + 1 < oldSize && !dla[hx, hy + 1])
-            {
-                if (x + 1 < oldSize && map[x + 1, y + 1])
-                {
-                    dla[hx + 1, hy + 1] = true;
-                    filledCount++;
-                }
-                else if (x - 1 >= 0 && map[x - 1, y + 1])
-                {
-                    dla[hx - 1, hy + 1] = true;
+                    upscaledMap[hx + 1, hy - 1] = true;
                     filledCount++;
                 }
             }
         }
-        return dla;
+        return upscaledMap;
     }
 
     /*
