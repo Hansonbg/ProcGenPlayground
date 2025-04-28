@@ -96,16 +96,16 @@ public class DLAGenerator : MonoBehaviour
 
             if (progressiveLoosening) currDensity *= loosenFactor;
         }
-        
         _dla = currMap;
     }
     
     bool RunWalker(bool[,] map, int n)
     {
+        
         int x, y;
         x = Random.Range(0, n);
         y = Random.Range(0, n);
-
+        
         for (int step = 0; step < maxSteps; step++)
         {
             if (HasNeighbor(map, x, y) && !map[x, y])
@@ -115,13 +115,19 @@ public class DLAGenerator : MonoBehaviour
                 return true;
             }
             
-            // random move (4-dir) with bounds
-            switch (Random.Range(0,4))
+            
+            // random move (8-dir) with bounds
+            switch (Random.Range(0,8))
             {
-                case 0: if (y+1 < n) y++; break;   // up
-                case 1: if (y-1 > 0)   y--; break;   // down
-                case 2: if (x+1 < n) x++; break;   // right
-                case 3: if (x-1 > 0)   x--; break;   // left
+                case 0: if (y+1 < n) y++; break;        // up
+                case 1: if (y-1 >= 0) y--; break;        // down
+                case 2: if (x+1 < n) x++; break;         // right
+                case 3: if (x-1 >= 0) x--; break;         // left
+                case 4: if (x+1 < n && y+1 < n) { x++; y++; } break; // up-right
+                case 5: if (x-1 >= 0 && y+1 < n) { x--; y++; } break; // up-left
+                case 6: if (x+1 < n && y-1 >= 0) { x++; y--; } break; // down-right
+                case 7: if (x-1 >= 0 && y-1 >= 0) { x--; y--; } break; // down-left
+
             }
         }
         return false;   // walker gave up
@@ -150,52 +156,78 @@ bool[,] UpscaleDLA(bool[,] map, int hiSize)
 
         for (int y = 0; y < oldSize; ++y)
         for (int x = 0; x < oldSize; ++x)
-            {
-                if (!map[x, y])
-                    continue;
-                
-                int hx = 2 * x + 1;
-                int hy = 2 * y + 1;
-                if (!dla[hx, hy])
-                {
-                    dla[hx, hy] = true;
-                    filledCount++;
-                }
+        {
+            if (!map[x, y])
+                continue;
 
-                if (x + 1 < oldSize && map[x + 1, y]) {
-                    dla[hx + 1, hy] = true;     // E
+            int hx = 2 * x + 1;
+            int hy = 2 * y + 1;
+            if (!dla[hx, hy])
+            {
+                dla[hx, hy] = true;
+                filledCount++;
+            }
+
+        }
+        
+        for (int y = 0; y < oldSize; ++y)
+        for (int x = 0; x < oldSize; ++x)
+        {
+            if (!map[x, y])
+                continue;
+            
+            int hx = 2 * x + 1;
+            int hy = 2 * y + 1;
+            
+            if (x + 1 < oldSize && map[x + 1, y]) {
+                dla[hx + 1, hy] = true;     // E
+                filledCount++;
+            }
+
+            if (y + 1 < oldSize && map[x, y + 1])
+            {
+                dla[hx, hy + 1] = true; // S
+                filledCount++;
+            }
+        }
+
+        for (int y = 0; y < oldSize; ++y)
+        for (int x = 0; x < oldSize; ++x)
+        {
+            int hx = 2 * x + 1;
+            int hy = 2 * y + 1;
+
+            if (!dla[hx, hy])
+                continue;
+
+            if (x + 1 < oldSize && !dla[hx + 1, hy])
+            {
+                if (y + 1 < oldSize && map[x + 1, y + 1])
+                {
+                    dla[hx + 1, hy + 1] = true;
                     filledCount++;
                 }
-                if (x - 1 >= 0    && map[x - 1, y]){
-                    dla[hx - 1, hy] = true;     // W
-                    filledCount++;
-                }
-                if (y + 1 < oldSize && map[x, y + 1])  {
-                    dla[hx, hy + 1] = true;     // S
-                    filledCount++;
-                }
-                if (y - 1 >= 0    && map[x, y - 1]){
-                    dla[hx, hy - 1] = true;     // N
-                    filledCount++;
-                }
-                if (x + 1 < oldSize && y + 1 < oldSize && map[x + 1, y + 1]){
-                    dla[hx + 1, hy + 1] = true; // SE
-                    filledCount++;
-                }
-                if (x - 1 >= 0    && y + 1 < oldSize && map[x - 1, y + 1]){
-                    dla[hx - 1, hy + 1] = true; // SW   
-                    filledCount++;
-                }
-                if (x + 1 < oldSize && y - 1 >= 0 && map[x + 1, y - 1]) {
-                    dla[hx + 1, hy - 1] = true; // NE
-                    filledCount++;
-                }
-                if (x - 1 >= 0    && y - 1 >= 0 && map[x - 1, y - 1])  {
-                    dla[hx - 1, hy - 1] = true; // NW
+                else if (y - 1 >= 0 && map[x + 1, y - 1])
+                {
+                    dla[hx + 1, hy - 1] = true;
                     filledCount++;
                 }
             }
 
+            if (y + 1 < oldSize && !dla[hx, hy + 1])
+            {
+                if (x + 1 < oldSize && map[x + 1, y + 1])
+                {
+                    dla[hx + 1, hy + 1] = true;
+                    filledCount++;
+                }
+                else if (x - 1 >= 0 && map[x - 1, y + 1])
+                {
+                    dla[hx - 1, hy + 1] = true;
+                    filledCount++;
+                }
+            }
+        }
         return dla;
     }
 
