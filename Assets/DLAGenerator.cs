@@ -243,8 +243,7 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
         
         // Third pass checks whether a right and bottom connection exists. If a right connection
         // exists, then we do not add diagonal connections there. If it does not exist, then we
-        // check for diagonal connections in the old map and add them. Run two passes of this logic
-        // to prevent losing connections over time.
+        // check for diagonal connections in the old map and add them.
         for (int passes = 0; passes < 2; passes++)
         for (int y = 0; y < oldSize; ++y)
         for (int x = 0; x < oldSize; ++x)
@@ -260,32 +259,92 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
             {
                 bool downRightExists = (y + 1 < oldSize) && (oldMap[x + 1, y + 1]);
                 bool upRightExists = (y - 1 >= 0) && (oldMap[x + 1, y - 1]);
+                randomSwitch = Random.Range(0, 8);
                 
                 // both an upper right and lower right connection exist in the old map, then
                 // choose one of them. Otherwise, check for the case where only one of those diagonals
                 // previously existed.
                 if (upRightExists && downRightExists)
                 {
-                    
+                    // down-right branch
                     if (Random.Range(0,200) % 2 == 0)
                     {
+                        if (randomSwitch >= 0 && randomSwitch < 4)
+                        {
+                            // stick with the down-right path
+                            upscaledMap[hx + 1, hy + 1] = true;
+                            filledCount++;
+                        } else if (randomSwitch >= 4 && randomSwitch < 6)
+                        {
+                            // add a right connection instead
+                            upscaledMap[hx + 1, hy] = true;
+                            filledCount++;
+                        }
+                        else
+                        {
+                            // add a down connection instead
+                            upscaledMap[hx, hy + 1] = true;
+                            filledCount++;
+                        }
+                    }
+                    // up-right branch
+                    else
+                    {
+                        if (randomSwitch >= 0 && randomSwitch < 4 && hy - 1 >= 0)
+                        {
+                            // stick with the up-right path
+                            upscaledMap[hx + 1, hy - 1] = true;
+                            filledCount++;
+                        } else if (randomSwitch >= 4 && randomSwitch < 6 && hy - 1 >= 0)
+                        {
+                            // add an up connection
+                            upscaledMap[hx, hy - 1] = true;
+                            filledCount++;
+                        } else
+                        {
+                            // add a right connection instead
+                            upscaledMap[hx + 1, hy] = true;
+                            filledCount++;
+                        }
+                    }
+                } else if (downRightExists)
+                {
+                    if (randomSwitch >= 0 && randomSwitch < 4)
+                    {
+                        // stick with the down-right path
                         upscaledMap[hx + 1, hy + 1] = true;
+                        filledCount++;
+                    } else if (randomSwitch >= 4 && randomSwitch < 6)
+                    {
+                        // add a right connection instead
+                        upscaledMap[hx + 1, hy] = true;
                         filledCount++;
                     }
                     else
                     {
-                        upscaledMap[hx + 1, hy - 1] = true;
+                        // add a down connection instead
+                        upscaledMap[hx, hy + 1] = true;
                         filledCount++;
                     }
-                } else if (downRightExists)
-                {
-                    upscaledMap[hx + 1, hy + 1] = true;
-                    filledCount++;
                 }
                 else if (upRightExists)
                 {
-                    upscaledMap[hx + 1, hy - 1] = true;
-                    filledCount++;
+                    if (randomSwitch >= 0 && randomSwitch < 4 && hy - 1 >= 0)
+                    {
+                        // stick with the up-right path
+                        upscaledMap[hx + 1, hy - 1] = true;
+                        filledCount++;
+                    } else if (randomSwitch >= 4 && randomSwitch < 6 && hy - 1 >= 0)
+                    {
+                        // add an up connection
+                        upscaledMap[hx, hy - 1] = true;
+                        filledCount++;
+                    } else
+                    {
+                        // add a right connection instead
+                        upscaledMap[hx + 1, hy] = true;
+                        filledCount++;
+                    }
                 }
             }
         }
