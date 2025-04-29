@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
-public class DLAGenerator : MonoBehaviour
+public class DlaGenerator : MonoBehaviour
 {
     [Header("UI Display Target")]
     public RawImage displayTarget;
@@ -27,15 +27,15 @@ public class DLAGenerator : MonoBehaviour
 
     [Header("Randomness")] 
     public int seed = 12345;
-    public bool useRandomSeed = false;
+
+    public bool useRandomSeed;
 
     //---------------------------------------------------------//
     
     Texture2D  _preview;     // optional preview texture
     float[,]   _heightMap;   // blurred DLA -> floats
     bool[,]    _dla;
-    private int filledCount;
-    private float spawnRadius;
+    private int _filledCount;
     private int _lastSize;
     private float _lastDensity;
     private float _lastLoosen;
@@ -66,7 +66,7 @@ public class DLAGenerator : MonoBehaviour
             _lastProgressiveLoosening = progressiveLoosening;
            
             InitializeSeed();
-            GenerateDLA();
+            GenerateDla();
             UpdateDisplay();
         }
     }
@@ -89,13 +89,13 @@ public class DLAGenerator : MonoBehaviour
     
     /* ---------------- generation ---------------- */
 
-    void GenerateDLA()
+    void GenerateDla()
     {
         int currSize = 4;
         int center = currSize / 2;
         float currDensity = particleDensity; 
         bool[,] currMap = new bool[currSize, currSize];
-        filledCount = 1;
+        _filledCount = 1;
         _dla = new bool[size, size];
         
             
@@ -104,7 +104,7 @@ public class DLAGenerator : MonoBehaviour
         while (currSize <= size)
         {
             int target = Mathf.RoundToInt(currSize * currSize * currDensity);
-            int toPlace = Mathf.Max(0, target - filledCount); 
+            int toPlace = Mathf.Max(0, target - _filledCount); 
             int totalAttempts = 0;
             int maxAttempts = target * 10;
 
@@ -112,7 +112,7 @@ public class DLAGenerator : MonoBehaviour
             {
                 if (RunWalker(currMap, currSize))
                 {
-                    filledCount++;
+                    _filledCount++;
                     toPlace--;
                     totalAttempts = 0;
                 }
@@ -128,7 +128,7 @@ public class DLAGenerator : MonoBehaviour
             currSize *= 2;
             if (currSize <= size)
             {
-                currMap = UpscaleDLA(currMap, currSize);
+                currMap = UpscaleDla(currMap, currSize);
             }
 
             if (progressiveLoosening) currDensity *= loosenFactor;
@@ -138,17 +138,15 @@ public class DLAGenerator : MonoBehaviour
     
     bool RunWalker(bool[,] map, int n)
     {
-        
-        int x, y;
-        x = Random.Range(0, n);
-        y = Random.Range(0, n);
+        int x = Random.Range(0, n);
+        int y = Random.Range(0, n);
         
         for (int step = 0; step < maxSteps; step++)
         {
             if (HasNeighbor(map, x, y) && !map[x, y])
             {
                 map[x, y] = true;
-                filledCount++;
+                _filledCount++;
                 return true;
             }
             
@@ -185,12 +183,12 @@ bool HasNeighbor(bool[,] m, int x, int y)
     return false;
 }
 
-bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
+bool[,] UpscaleDla(bool[,] oldMap, int newSize)
     {
         int oldSize = oldMap.GetLength(0);
         bool[,] upscaledMap = new bool[newSize, newSize];
 
-        // First pass translates existing points on the low-scale map
+        // The first pass translates existing points on the low-scale map
         // to corresponding points on the size-doubled map, without connecting them
         for (int y = 0; y < oldSize; ++y)
         for (int x = 0; x < oldSize; ++x)
@@ -208,7 +206,7 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
             // Skip copying points that were surrounded on the top and left in the low-res
             // map and decrement the count there
             if (upLeftExists && leftExists && upExists)
-                filledCount--;
+                _filledCount--;
             else
                 upscaledMap[hx, hy] = true; 
         }
@@ -231,25 +229,25 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
             bool rightExists = (x + 1 < oldSize && oldMap[x + 1, y]);
            
             // If the right pixel existed, we will favor adding a right connection
-            // with a chance of it turning into an up-right or down-right connection instead.
+            // with a chance of it turning into an upright or down-right connection instead.
             if (rightExists) {
                 randomSwitch = Random.Range(0, 8);
-                if (randomSwitch >= 0 && randomSwitch < 4)
+                if (randomSwitch is >= 0 and < 4)
                 {
                     // extend the right connection
                     upscaledMap[hx + 1, hy] = true; // E
-                    filledCount++;
-                } else if (randomSwitch >= 4 && randomSwitch < 6 && hy - 1 >= 0)
+                    _filledCount++;
+                } else if (randomSwitch is >= 4 and < 6 && hy > 0)
                 {
-                    // add an up-right connection
+                    // add an upward right connection
                     upscaledMap[hx + 1, hy - 1] = true;
-                    filledCount++;
+                    _filledCount++;
                 }
                 else if (hx + 1 < newSize && hy + 1 < newSize)
                 {
                     // add a down-right connection
                     upscaledMap[hx + 1, hy + 1] = true;
-                    filledCount++;
+                    _filledCount++;
                 }
             }
 
@@ -257,22 +255,22 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
             {
                 randomSwitch = Random.Range(0, 8);
 
-                if (randomSwitch >= 0 && randomSwitch < 4 && hy + 1 < newSize)
+                if (randomSwitch is >= 0 and < 4 && hy + 1 < newSize)
                 {
                     // extend the down connection
                     upscaledMap[hx, hy + 1] = true; // S
-                    filledCount++;
-                } else if (randomSwitch >= 4 && randomSwitch < 6 && hx - 1 >= 0 && hy + 1 < newSize)
+                    _filledCount++;
+                } else if (randomSwitch is >= 4 and < 6 && hx > 0 && hy + 1 < newSize)
                 {
-                    // instead wiggle down left
+                    // instead, wiggle down and left
                     upscaledMap[hx - 1, hy + 1] = true;
-                    filledCount++;
+                    _filledCount++;
                 }
                 else if (hx + 1 < newSize && hy + 1 < newSize)
                 {
-                    // instead wiggle down right
+                    // instead, wiggle down and right
                     upscaledMap[hx + 1, hy + 1] = true;
-                    filledCount++;
+                    _filledCount++;
                 }
             }
         }
@@ -298,7 +296,7 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
                 bool upRightExists = (y - 1 >= 0) && (oldMap[x + 1, y - 1]);
                 randomSwitch = Random.Range(0, 8);
                 
-                // both an upper right and lower right connection exist in the old map, then
+                // Both an upper right and lower right connection exist in the old map, then
                 // choose one of them. Otherwise, check for the case where only one of those diagonals
                 // previously existed.
                 if (upRightExists && downRightExists)
@@ -306,81 +304,81 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
                     // down-right branch
                     if (Random.Range(0,200) % 2 == 0)
                     {
-                        if (randomSwitch >= 0 && randomSwitch < 4)
+                        if (randomSwitch is >= 0 and < 4)
                         {
                             // stick with the down-right path
                             upscaledMap[hx + 1, hy + 1] = true;
-                            filledCount++;
-                        } else if (randomSwitch >= 4 && randomSwitch < 6)
+                            _filledCount++;
+                        } else if (randomSwitch is >= 4 and < 6)
                         {
                             // add a right connection instead
                             upscaledMap[hx + 1, hy] = true;
-                            filledCount++;
+                            _filledCount++;
                         }
                         else
                         {
                             // add a down connection instead
                             upscaledMap[hx, hy + 1] = true;
-                            filledCount++;
+                            _filledCount++;
                         }
                     }
                     // up-right branch
                     else
                     {
-                        if (randomSwitch >= 0 && randomSwitch < 4 && hy - 1 >= 0)
+                        if (randomSwitch is >= 0 and < 4 && hy > 0)
                         {
-                            // stick with the up-right path
+                            // stick with the up and right path
                             upscaledMap[hx + 1, hy - 1] = true;
-                            filledCount++;
-                        } else if (randomSwitch >= 4 && randomSwitch < 6 && hy - 1 >= 0)
+                            _filledCount++;
+                        } else if (randomSwitch is >= 4 and < 6 && hy > 0)
                         {
                             // add an up connection
                             upscaledMap[hx, hy - 1] = true;
-                            filledCount++;
+                            _filledCount++;
                         } else
                         {
                             // add a right connection instead
                             upscaledMap[hx + 1, hy] = true;
-                            filledCount++;
+                            _filledCount++;
                         }
                     }
                 } else if (downRightExists)
                 {
-                    if (randomSwitch >= 0 && randomSwitch < 4)
+                    if (randomSwitch is >= 0 and < 4)
                     {
                         // stick with the down-right path
                         upscaledMap[hx + 1, hy + 1] = true;
-                        filledCount++;
-                    } else if (randomSwitch >= 4 && randomSwitch < 6)
+                        _filledCount++;
+                    } else if (randomSwitch is >= 4 and < 6)
                     {
                         // add a right connection instead
                         upscaledMap[hx + 1, hy] = true;
-                        filledCount++;
+                        _filledCount++;
                     }
                     else
                     {
                         // add a down connection instead
                         upscaledMap[hx, hy + 1] = true;
-                        filledCount++;
+                        _filledCount++;
                     }
                 }
                 else if (upRightExists)
                 {
-                    if (randomSwitch >= 0 && randomSwitch < 4 && hy - 1 >= 0)
+                    if (randomSwitch is >= 0 and < 4 && hy - 1 >= 0)
                     {
-                        // stick with the up-right path
+                        // stick with the up and right path
                         upscaledMap[hx + 1, hy - 1] = true;
-                        filledCount++;
-                    } else if (randomSwitch >= 4 && randomSwitch < 6 && hy - 1 >= 0)
+                        _filledCount++;
+                    } else if (randomSwitch is >= 4 and < 6 && hy > 0)
                     {
                         // add an up connection
                         upscaledMap[hx, hy - 1] = true;
-                        filledCount++;
+                        _filledCount++;
                     } else
                     {
                         // add a right connection instead
                         upscaledMap[hx + 1, hy] = true;
-                        filledCount++;
+                        _filledCount++;
                     }
                 }
             }
@@ -442,8 +440,10 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
     {
         int w = map.GetLength(0);
         int h = map.GetLength(1);
-        Texture2D tex = new Texture2D(w, h);
-        tex.filterMode = FilterMode.Point;
+        Texture2D tex = new Texture2D(w, h)
+        {
+            filterMode = FilterMode.Point
+        };
         for (int x = 0; x < w; ++x)
         for (int y = 0; y < h; ++y)
             tex.SetPixel(x, y, map[x, y] ? Color.white : Color.black);
