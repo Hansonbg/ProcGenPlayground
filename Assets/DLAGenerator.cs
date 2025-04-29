@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
-using UnityEngine.Rendering;
 using UnityEngine.UI;
-using System.Collections.Generic;
+
+
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class DLAGenerator : MonoBehaviour
@@ -12,10 +12,6 @@ public class DLAGenerator : MonoBehaviour
     [Header("Map size / particles")] [Range(4, 4096)]
     public int size = 1024;
 
-    void OnValidate()
-    {
-        size = Mathf.ClosestPowerOfTwo(size);
-    }
 
     [Header("DLA Growth Settings")]
     [Range(0.01f, 1f)]
@@ -40,17 +36,57 @@ public class DLAGenerator : MonoBehaviour
     bool[,]    _dla;
     private int filledCount;
     private float spawnRadius;
+    private int _lastSize;
+    private float _lastDensity;
+    private float _lastLoosen;
+    private int _lastMaxSteps;
+    private bool _lastProgressiveLoosening;
+    private int _lastSeed;
+    private bool _lastUseRandomSeed;
 
     void Start()
     {
-        if (useRandomSeed)
-            seed = Random.Range(int.MinValue, int.MaxValue);
-        Random.InitState(seed);
-        GenerateDLA();
-        displayTarget.texture = PreviewTexture(_dla);
-        displayTarget.rectTransform.sizeDelta = new Vector2(size, size);
+        InitializeSeed();
+    }
+    
+    void OnValidate()
+    {
+        size = Mathf.ClosestPowerOfTwo(size);
+
+        if (Application.isPlaying && size != _lastSize || Mathf.Abs(particleDensity - _lastDensity) > 0.001f ||
+            Mathf.Abs(loosenFactor - _lastLoosen) > 0.001f || maxSteps != _lastMaxSteps || seed != _lastSeed ||
+            useRandomSeed != _lastUseRandomSeed || progressiveLoosening != _lastProgressiveLoosening)
+        {
+            _lastSize = size;
+            _lastDensity = particleDensity;
+            _lastLoosen = loosenFactor;
+            _lastMaxSteps = maxSteps;
+            _lastSeed = seed;
+            _lastUseRandomSeed = useRandomSeed;
+            _lastProgressiveLoosening = progressiveLoosening;
+           
+            InitializeSeed();
+            GenerateDLA();
+            UpdateDisplay();
+        }
     }
 
+    private void UpdateDisplay()
+    {
+        if (displayTarget != null)
+        {
+            displayTarget.texture = PreviewTexture(_dla);
+            //displayTarget.rectTransform.sizeDelta = new Vector2(size, size);
+        }
+    }
+    private void InitializeSeed()
+    {
+        if (useRandomSeed)
+            seed = Random.Range(-100000, 100000);
+        
+        Random.InitState(seed);
+    }
+    
     /* ---------------- generation ---------------- */
 
     void GenerateDLA()
@@ -243,7 +279,8 @@ bool[,] UpscaleDLA(bool[,] oldMap, int newSize)
         
         // Third pass checks whether a right and bottom connection exists. If a right connection
         // exists, then we do not add diagonal connections there. If it does not exist, then we
-        // check for diagonal connections in the old map and add them.
+        // check for diagonal connections in the old map and add them. Run two passes to enforce slightly
+        // more connectivity
         for (int passes = 0; passes < 2; passes++)
         for (int y = 0; y < oldSize; ++y)
         for (int x = 0; x < oldSize; ++x)
