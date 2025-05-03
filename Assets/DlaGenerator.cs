@@ -1,13 +1,17 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using UnityEngine.UI;
-
+using Random = UnityEngine.Random;
+using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class DlaGenerator : MonoBehaviour
 {
-    [Header("UI Display Target")]
-    public RawImage displayTarget;
+    [FormerlySerializedAs("displayTarget")] [Header("UI Display Targets")]
+    public RawImage dlaDisplayTarget;
+    public RawImage heightMapDisplayTarget;
     
     [Header("Map size / particles")] [Range(4, 4096)]
     public int size = 1024;
@@ -67,16 +71,22 @@ public class DlaGenerator : MonoBehaviour
            
             InitializeSeed();
             GenerateDla();
+            BuildMesh();
             UpdateDisplay();
         }
     }
 
     private void UpdateDisplay()
     {
-        if (displayTarget != null)
+        if (dlaDisplayTarget != null)
         {
-            displayTarget.texture = PreviewTexture(_dla);
+            dlaDisplayTarget.texture = PreviewDla(_dla);
             //displayTarget.rectTransform.sizeDelta = new Vector2(size, size);
+        }
+
+        if (heightMapDisplayTarget != null)
+        {
+            heightMapDisplayTarget.texture = PreviewHeightMap(_heightMap);
         }
     }
     private void InitializeSeed()
@@ -89,14 +99,92 @@ public class DlaGenerator : MonoBehaviour
     
     /* ---------------- generation ---------------- */
 
+    float[,] InitHeightMapFromBool(bool[,] dla)
+    {
+        int dims = dla.GetLength(0);
+        float[,] result = new float[dims, dims];
+
+        for (int y = 0; y < dims; y++)
+        for (int x = 0; x < dims; x ++)
+        {
+            result[x, y] = dla[x, y] ? 1f : 0f;
+        }
+        
+        return result;
+    }
+    
+    float[,] UpscaleFloatMap(float[,] heightMap, int newSize)
+    {
+        int oldSize = heightMap.GetLength(0);
+        float[,] result = new float[newSize, newSize];
+
+        // Lerp the input dla into a float map of equal size.
+        for (int y = 0; y < newSize; y++)
+        for (int x = 0; x < newSize; x++)
+        {
+           // Map for sub-pixel (floating point) precision in the original
+           float gx = x / 2f;
+           float gy = y / 2f;
+           
+           // Find the integer representation of that sub-pixel precision
+           // (top left corner)
+           int ix = Mathf.FloorToInt(gx);
+           int iy = Mathf.FloorToInt(gy);
+
+           // Get the floating point delta between sub-pixel precision and its integer 
+           // equivalent
+           float tx = gx - ix;
+           float ty = gy - iy;
+           
+           // Clamped right and bottom neighbors in integer space
+           int ix1 = Mathf.Min(ix + 1, oldSize - 1);
+           int iy1 = Mathf.Min(iy + 1, oldSize - 1);
+          
+           // Find float values for the nearest neighbor vertices
+           // of the upscaled points in the old
+           float v00 = heightMap[ix, iy];
+           float v10 = heightMap[ix1, iy];
+           float v01 = heightMap[ix, iy1];
+           float v11 = heightMap[ix1, iy1];
+           
+           // Lerp across the top and bottom x rows
+           float lerpX1 = Mathf.Lerp(v00, v10, tx);
+           float lerpX2 = Mathf.Lerp(v01, v11, tx);
+           
+           // Assign the Lerp of those previous x rows across the y delta
+           result[x,y] = Mathf.Lerp(lerpX1, lerpX2, ty);
+        }
+        
+        return result;
+    }
+
+    void AddValues(float[,] oldHeightMap, bool[,] dla)
+    {
+        if (oldHeightMap.GetLength(0) != dla.GetLength(0))
+        {
+            throw new ArgumentException("Mismatched dimensions in AddValues()");
+        }
+        
+        int mapSize = oldHeightMap.GetLength(0);
+        
+        for (int y = 0; y < mapSize; y++)
+        for (int x = 0; x < mapSize; x++)
+        {
+            oldHeightMap[x, y] = dla[x, y] ? 1f + oldHeightMap[x, y] : oldHeightMap[x, y];
+        }
+    }
+    
+    
     void GenerateDla()
     {
         int currSize = 4;
         int center = currSize / 2;
         float currDensity = particleDensity; 
         bool[,] currMap = new bool[currSize, currSize];
+        float[,] inProgressHeightMap = new float[currSize, currSize];
         _filledCount = 1;
         _dla = new bool[size, size];
+        _heightMap = new float[size, size];
         
             
         currMap[center,center] = true;
@@ -123,17 +211,24 @@ public class DlaGenerator : MonoBehaviour
                 
             }
 
-
+            if (currSize == 4)
+            {
+                inProgressHeightMap = InitHeightMapFromBool(currMap);
+            }
             // upscale → returns brand-new arrays the *right* size
             currSize *= 2;
             if (currSize <= size)
             {
+                inProgressHeightMap = UpscaleFloatMap(inProgressHeightMap, currSize); 
                 currMap = UpscaleDla(currMap, currSize);
+                AddValues(inProgressHeightMap, currMap);
             }
 
             if (progressiveLoosening) currDensity *= loosenFactor;
         }
+        
         _dla = currMap;
+        _heightMap = inProgressHeightMap;
     }
     
     bool RunWalker(bool[,] map, int n)
@@ -149,7 +244,6 @@ public class DlaGenerator : MonoBehaviour
                 _filledCount++;
                 return true;
             }
-            
             
             // random move (8-dir) with bounds
             switch (Random.Range(0,8))
@@ -383,10 +477,11 @@ bool[,] UpscaleDla(bool[,] oldMap, int newSize)
                 }
             }
         }
+        
         return upscaledMap;
     }
 
-    /*
+    
     // Mesh building function - unused for now.
     void BuildMesh()
     {
@@ -430,13 +525,12 @@ bool[,] UpscaleDla(bool[,] oldMap, int newSize)
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
 
-        GetComponent<MeshFilter>().mesh             = mesh;
-        GetComponent<Renderer>().material.mainTexture = PreviewTexture(_dla);
+        GetComponent<MeshFilter>().mesh = mesh;
     }
-*/
+
     /* ---------------- optional preview ---------------- */
 
-    Texture2D PreviewTexture(bool[,] map)
+    Texture2D PreviewDla(bool[,] map)
     {
         int w = map.GetLength(0);
         int h = map.GetLength(1);
@@ -450,4 +544,23 @@ bool[,] UpscaleDla(bool[,] oldMap, int newSize)
         tex.Apply();
         return tex;
     }
+    
+    Texture2D PreviewHeightMap(float[,] map)
+    {
+        int w = map.GetLength(0);
+        int h = map.GetLength(1);
+        Texture2D tex = new Texture2D(w, h);
+        tex.filterMode = FilterMode.Point;
+    
+        for (int x = 0; x < w; ++x)
+        for (int y = 0; y < h; ++y)
+        {
+            float value = Mathf.Clamp01(map[x, y]);
+            tex.SetPixel(x, y, new Color(value, value, value));
+        }
+
+        tex.Apply();
+        return tex;
+    }
+
 }
