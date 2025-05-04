@@ -46,6 +46,7 @@ public class DlaGenerator : MonoBehaviour
     private bool _lastProgressiveLoosening;
     private int _lastSeed;
     private bool _lastUseRandomSeed;
+    private float _lastHeightScale;
     private RenderTexture _rtA, _rtB;
     [SerializeField] private Material blurMat;
     
@@ -60,7 +61,8 @@ public class DlaGenerator : MonoBehaviour
 
         if (Application.isPlaying && size != _lastSize || Mathf.Abs(particleDensity - _lastDensity) > 0.001f ||
             Mathf.Abs(loosenFactor - _lastLoosen) > 0.001f || maxSteps != _lastMaxSteps || seed != _lastSeed ||
-            useRandomSeed != _lastUseRandomSeed || progressiveLoosening != _lastProgressiveLoosening)
+            useRandomSeed != _lastUseRandomSeed || progressiveLoosening != _lastProgressiveLoosening ||
+            Mathf.Abs(heightScale - _lastHeightScale) > 0.001f)
         {
             _lastSize = size;
             _lastDensity = particleDensity;
@@ -69,6 +71,7 @@ public class DlaGenerator : MonoBehaviour
             _lastSeed = seed;
             _lastUseRandomSeed = useRandomSeed;
             _lastProgressiveLoosening = progressiveLoosening;
+            _lastHeightScale = heightScale;
            
             InitializeSeed();
             GenerateDla();
@@ -82,7 +85,6 @@ public class DlaGenerator : MonoBehaviour
         if (dlaDisplayTarget != null)
         {
             dlaDisplayTarget.texture = PreviewDla(_dla);
-            //displayTarget.rectTransform.sizeDelta = new Vector2(size, size);
         }
     }
     private void InitializeSeed()
@@ -521,7 +523,14 @@ bool[,] UpscaleDla(bool[,] oldMap, int newSize)
         mesh.uv = uvs;
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
-        GetComponent<MeshFilter>().mesh = mesh; 
+        
+        #if UNITY_EDITOR
+        UnityEditor.EditorApplication.delayCall += () =>
+        {
+            if (this != null)
+                GetComponent<MeshFilter>().mesh = mesh;
+        };
+        #endif
         
         var colors = new Color[mesh.vertexCount]; 
         for(int y = 0; y < size; y++)
