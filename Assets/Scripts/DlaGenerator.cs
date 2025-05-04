@@ -10,7 +10,6 @@ public class DlaGenerator : MonoBehaviour
 {
     [Header("UI Display Targets")]
     public RawImage dlaDisplayTarget;
-    public RawImage heightMapDisplayTarget;
     
     [Header("Map size / particles")] [Range(4, 4096)]
     public int size = 1024;
@@ -25,8 +24,15 @@ public class DlaGenerator : MonoBehaviour
     [Range(10, 50000)]
     public int maxSteps = 500;
 
+    [Header("Blur Fudge Factors")]
+    [Range(1f, 10f)]
+    public float fudgeFactorSigma = 1f;
+    [Range(1, 20)]
+    public int fudgeFactorSize = 1;
+
     [Header("Height settings")]
-    public float heightScale = 80f;   // overall vertical exaggeration
+    [Range(1, 100)]
+    public float heightScale = 80f;
 
     [Header("Randomness")] 
     public int seed = 12345;
@@ -47,12 +53,18 @@ public class DlaGenerator : MonoBehaviour
     private int _lastSeed;
     private bool _lastUseRandomSeed;
     private float _lastHeightScale;
-    private RenderTexture _rtA, _rtB;
-    [SerializeField] private Material blurMat;
+    private int _iterations;
+    private int _lastFudgeSize;
+    private float _lastFudgeSigma;
+   
+   
     
     void Start()
     {
         InitializeSeed();
+        fudgeFactorSize = Mathf.Max(1, fudgeFactorSize);
+        fudgeFactorSigma = Mathf.Max(1f, fudgeFactorSigma);
+        
     }
     
     void OnValidate()
@@ -62,7 +74,8 @@ public class DlaGenerator : MonoBehaviour
         if (Application.isPlaying && size != _lastSize || Mathf.Abs(particleDensity - _lastDensity) > 0.001f ||
             Mathf.Abs(loosenFactor - _lastLoosen) > 0.001f || maxSteps != _lastMaxSteps || seed != _lastSeed ||
             useRandomSeed != _lastUseRandomSeed || progressiveLoosening != _lastProgressiveLoosening ||
-            Mathf.Abs(heightScale - _lastHeightScale) > 0.001f)
+            Mathf.Abs(heightScale - _lastHeightScale) > 0.001f || Mathf.Abs(fudgeFactorSigma - _lastFudgeSigma) > 0.001f ||
+            fudgeFactorSize != _lastFudgeSize)
         {
             _lastSize = size;
             _lastDensity = particleDensity;
@@ -72,6 +85,12 @@ public class DlaGenerator : MonoBehaviour
             _lastUseRandomSeed = useRandomSeed;
             _lastProgressiveLoosening = progressiveLoosening;
             _lastHeightScale = heightScale;
+            _lastFudgeSize = fudgeFactorSize;
+            _lastFudgeSigma = fudgeFactorSigma;
+            _iterations = Mathf.CeilToInt(Mathf.Log(size));
+            
+            fudgeFactorSize = Mathf.Max(1, fudgeFactorSize);
+            fudgeFactorSigma = Mathf.Max(1f, fudgeFactorSigma);
            
             InitializeSeed();
             GenerateDla();
@@ -85,6 +104,12 @@ public class DlaGenerator : MonoBehaviour
         if (dlaDisplayTarget != null)
         {
             dlaDisplayTarget.texture = PreviewDla(_dla);
+            dlaDisplayTarget.rectTransform.anchorMin = new Vector2(0f, 0.65f);
+            dlaDisplayTarget.rectTransform.anchorMax = new Vector2(0.35f, 1f);
+            dlaDisplayTarget.rectTransform.pivot     = new Vector2(0, 1);
+            dlaDisplayTarget.rectTransform.anchoredPosition = new Vector2(0, 0);
+            dlaDisplayTarget.rectTransform.offsetMin = Vector2.zero;
+            dlaDisplayTarget.rectTransform.offsetMax = Vector2.zero; 
         }
     }
     private void InitializeSeed()
@@ -105,8 +130,8 @@ public class DlaGenerator : MonoBehaviour
         for (int y = 0; y < dims; y++)
         for (int x = 0; x < dims; x ++)
             result[x, y] = dla[x, y] ? 1f : 0f;
-        
-        return result;
+
+        return Blur(result, 1, 2f);
     }
     
     float[,] UpscaleFloatMap(float[,] heightMap, int newSize)
@@ -153,7 +178,58 @@ public class DlaGenerator : MonoBehaviour
         
         return result;
     }
+   
+    // This needs revision
+    float[,] Blur(float[,] input, int radius, float sigma)
+    {
+        int width = input.GetLength(0);
+        float[,] temp = new float[width, width];
+        float[,] output = new float[width, width];
 
+        float[] kernel = new float[2 * radius + 1];
+        float sum = 0f;
+
+        // Create 1D Gaussian kernel
+        for (int i = -radius; i <= radius; i++)
+        {
+            float value = Mathf.Exp(-(i * i) / (2 * sigma * sigma));
+            kernel[i + radius] = value;
+            sum += value;
+        }
+
+        // Normalize kernel
+        for (int i = 0; i < kernel.Length; i++)
+            kernel[i] /= sum;
+
+        // Horizontal pass
+        for (int y = 0; y < width; y++)
+        for (int x = 0; x < width; x++)
+        {
+            float accum = 0f;
+            for (int k = -radius; k <= radius; k++)
+            {
+                int sx = Mathf.Clamp(x + k, 0, width - 1);
+                accum += input[sx, y] * kernel[k + radius];
+            }
+            temp[x, y] = accum;
+        }
+
+        // Vertical pass
+        for (int y = 0; y < width; y++)
+        for (int x = 0; x < width; x++)
+        {
+            float accum = 0f;
+            for (int k = -radius; k <= radius; k++)
+            {
+                int sy = Mathf.Clamp(y + k, 0, width - 1);
+                accum += temp[x, sy] * kernel[k + radius];
+            }
+            output[x, y] = accum;
+        }
+
+        return output;
+    }
+ 
     void AddValues(float[,] oldHeightMap, bool[,] dla)
     {
         if (oldHeightMap.GetLength(0) != dla.GetLength(0))
@@ -166,8 +242,11 @@ public class DlaGenerator : MonoBehaviour
         for (int y = 0; y < mapSize; y++)
         for (int x = 0; x < mapSize; x++)
         {
-            oldHeightMap[x, y] = dla[x, y] ? 1f + oldHeightMap[x, y] : oldHeightMap[x, y];
+            oldHeightMap[x, y] = dla[x, y] ? 1f * _iterations + oldHeightMap[x, y] : oldHeightMap[x, y];
         }
+        
+        // Decrease iterations so subsequent passes add more granular detail.
+        _iterations--;
     }
     
     
@@ -211,14 +290,17 @@ public class DlaGenerator : MonoBehaviour
             if (currSize == 4)
                 inProgressHeightMap = InitHeightMapFromBool(currMap);
             
-            
+          
             // Upscale and process
             currSize *= 2;
             if (currSize <= size)
             {
+                int radius = Mathf.CeilToInt(Mathf.Log(currSize)) * fudgeFactorSize;  
+                float sigma = Mathf.Log(currSize) * fudgeFactorSigma;
                 inProgressHeightMap = UpscaleFloatMap(inProgressHeightMap, currSize); 
                 currMap = UpscaleDla(currMap, currSize);
                 AddValues(inProgressHeightMap, currMap);
+                inProgressHeightMap = Blur(inProgressHeightMap, radius, sigma);
             }
 
             if (progressiveLoosening) 
@@ -538,10 +620,11 @@ bool[,] UpscaleDla(bool[,] oldMap, int newSize)
         {
             int i = x + y * size;
             float v = Mathf.Clamp01(_heightMap[x , y] / max);
-            
+
+            float w = Mathf.InverseLerp(0.75f, 1f, v);
             Color c = v < 0.5f ?
-                Color.Lerp(new Color(0.13f, 0.55f, 0.13f), new Color(0.4f, 0.26f, 0.13f), v * 2f)
-                : Color.Lerp(new Color(0.4f, 0.26f, 0.13f), Color.white, (v - 0.5f) * 2f);
+                Color.Lerp(new Color(0.0184f, 0.46f, 0.0920f), new Color(0.4f, 0.26f, 0.13f), v * 2f)
+                : Color.Lerp(new Color(0.4f, 0.26f, 0.13f), Color.white, w);
             
             colors[i] = c;
         }
